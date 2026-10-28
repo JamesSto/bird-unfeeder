@@ -1,0 +1,25 @@
+{
+  "name": "bird-unfeeder-telemetry",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.web.json",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server.js",
+    "dev": "tsc -p tsconfig.web.json && concurrently -k -n web,server \"tsc -p tsconfig.web.json --watch --preserveWatchOutput\" \"tsx watch --env-file-if-exists=.env src/server.ts\"",
+    "simulate": "tsx --env-file-if-exists=.env scripts/simulate.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
