@@ -23,7 +23,7 @@ bool setClock() {
     nowSecs = time(nullptr);
   }
   if (millis() - start_time > WIFI_CONNECTION_TIMEOUT_MS) {
-    addTelemetryEvent(TelemetryEvent::CLOCK_SET_FAILED);
+    addTelemetryEvent(TelemetryEvent::CLOCK_SET_FAILED, "timeout");
     Serial.println("Failed to set clock");
     return false;
   }
@@ -48,7 +48,7 @@ bool setup_wifi() {
     delay(300);
   }
   if (millis() - start_time > WIFI_CONNECTION_TIMEOUT_MS) {
-    addTelemetryEvent(TelemetryEvent::WIFI_CONNECTION_FAILED);
+    addTelemetryEvent(TelemetryEvent::WIFI_CONNECTION_FAILED, "timeout");
     Serial.println("Failed to connect to WiFi");
     return false;
   }

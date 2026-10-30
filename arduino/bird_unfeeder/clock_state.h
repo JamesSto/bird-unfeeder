@@ -17,7 +17,7 @@ std::optional<bool> anyone_home() {
   DeserializationError error = deserializeJson(state_json, clock_state_str);
 
   if (error) {
-   addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE);
+   addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE, error.c_str());
    Serial.println(error.f_str());
    return std::nullopt;
   }
