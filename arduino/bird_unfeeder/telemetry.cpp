@@ -90,6 +90,7 @@ void addTelemetryEvent(TelemetryEvent event) {
 
   telemetry_messages.push_back(doc);
   serializeJson(doc, Serial);
+  Serial.println("");
 }
 
 String getTelemetryPayload() {

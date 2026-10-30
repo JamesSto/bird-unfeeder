@@ -1,6 +1,9 @@
 /*
- * Main loop for the bird unfeeder
+ * Main code for the bird unfeeder
  */
+
+#include <Arduino.h>
+#include <optional>
 
 #include "constants.h"
 #include "motor.h"
@@ -15,6 +18,7 @@ constexpr int POLLING_PERIOD_US = 1 * 60 * 1000 * 1000;
 
 bool run_setup() {
   Serial.begin(115200);
+  Serial.println("Set up telemetry");
   addTelemetryEvent(TelemetryEvent::WOKE_UP);
 
   pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
@@ -26,7 +30,6 @@ bool run_setup() {
 
   bool wifi_success = setup_wifi();
   if (!wifi_success) {
-    Serial.println("Failed to setup wifi");
     return false;
   }
   return true;
@@ -42,13 +45,17 @@ void finish(bool unrecoverable_error) {
 }
 
 void maybe_adjust_weight() {
-  bool someone_home = anyone_home();
+  std::optional<bool> someone_home_opt = anyone_home();
+  if (!someone_home_opt.has_value()) {
+    finish(false);
+  }
+  bool someone_home = someone_home_opt.value();
   addTelemetryEvent(anyone_home ? TelemetryEvent::FOUND_CLOCK_STATE_HOME : TelemetryEvent::FOUND_CLOCK_STATE_AWAY);
   bool weight_up = limit_switch_pressed();
 
-  if (someone_home && weight_up) {
+  if (!someone_home && weight_up) {
     lower_weight();
-  } else if (!someone_home && !weight_up) {
+  } else if (someone_home && !weight_up) {
     bool successful_raise = raise_weight();
     if (!successful_raise) {
       // Motor didn't hit limit switch - stuck?

@@ -3,21 +3,23 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <string>
+#include <optional>
 #include "wifi_util.h"
+#include "telemetry.h"
 
-bool anyone_home() {
+std::optional<bool> anyone_home() {
   String clock_state_str = get("https://internal.tinkerdeck.com/clock_state");
   if (clock_state_str == "") {
-    Serial.println("Clock state fetch failed.");
-    return false;
+    addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE);
+    return std::nullopt;
   }
   JsonDocument state_json = DynamicJsonDocument(clock_state_str.length());
   DeserializationError error = deserializeJson(state_json, clock_state_str);
 
   if (error) {
-   Serial.print(F("deserializeJson() failed: "));
+   addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE);
    Serial.println(error.f_str());
-   return false;
+   return std::nullopt;
   }
 
   for (JsonPair kv : state_json.as<JsonObject>()) {

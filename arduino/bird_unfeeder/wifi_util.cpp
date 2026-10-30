@@ -6,6 +6,7 @@
 #include <NetworkClientSecure.h>
 
 #include "telemetry.h"
+#include "secrets.h"
 
 constexpr int WIFI_CONNECTION_TIMEOUT_MS = 30 * 1000;
 
@@ -34,6 +35,7 @@ bool setClock() {
   char buf[26];
   Serial.print(asctime_r(&timeinfo, buf));
   addTelemetryEvent(TelemetryEvent::CLOCK_SET);
+  return true;
 }
 
 
@@ -62,6 +64,9 @@ String get(String url) {
   String payload;
 
   HTTPClient https;
+  https.addHeader("Content-Type", "application/json");
+  https.setAuthorizationType("basic");
+  https.setAuthorization(SERVER_USERNAME, SERVER_PASSWORD);
   https.begin(client, url);
   int httpCode = https.GET();
   if (httpCode == HTTP_CODE_OK) {
@@ -83,7 +88,7 @@ int post(String url, String payload) {
   https.begin(client, url);
   https.addHeader("Content-Type", "application/json");
   https.setAuthorizationType("basic");
-  https.setAuthorization("admin", "rogerDodger");
+  https.setAuthorization(SERVER_USERNAME, SERVER_PASSWORD);
   int httpsCode = https.POST(payload);
 
   https.end();
