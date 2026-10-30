@@ -28,5 +28,5 @@ npm run simulate -- live                              # one wake/minute to the r
   `FOUND_CLOCK_STATE_*` is ignored because the firmware always reports HOME there.
 - **Timestamps** are rebuilt from `uptime_ms` against the latest event with a valid clock, or against
   the time the server received the packet if NTP never synced.
-- **Offline** means no check-in for `OFFLINE_AFTER_MS` (5 min). Wakes where Wi-Fi fails never
+- **Offline** means no check-in for `OFFLINE_AFTER_MS` (1 hour). Wakes where Wi-Fi fails never
   reach the server, so they show up as gaps.

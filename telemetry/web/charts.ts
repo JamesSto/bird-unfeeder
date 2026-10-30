@@ -145,6 +145,7 @@ export interface LineOpts {
   to: number;
   times: number[]; // shared x positions (bucket starts)
   bucketMs: number;
+  breakMs?: number; // only break the line across empty stretches longer than this
   series: LineSeries[];
   band?: { lo: Array<number | null>; hi: Array<number | null>; color: string; label: string };
   refs?: Array<{ v: number; label: string; color: string }>;
@@ -174,7 +175,7 @@ export function lineChart(container: HTMLElement, o: LineOpts) {
   const f = frame(container, { from: o.from, to: o.to, y0: Math.min(ticks[0], lo - pad), y1: Math.max(ticks[ticks.length - 1], hi + pad), yFmt: o.yFmt, yTicks: ticks, height: o.height, left: 52 });
   const mid = (i: number) => o.times[i] + o.bucketMs / 2;
   // Break lines where buckets are missing (device offline).
-  const gapAfter = (i: number) => i + 1 < o.times.length && o.times[i + 1] - o.times[i] > o.bucketMs * 1.5;
+  const gapAfter = (i: number) => i + 1 < o.times.length && o.times[i + 1] - o.times[i] > Math.max(o.bucketMs * 1.5, o.breakMs ?? 0);
 
   for (const r of o.refs ?? []) {
     svgEl("line", { x1: f.m.l, x2: f.w - f.m.r, y1: f.y(r.v), y2: f.y(r.v), class: "ref", stroke: `var(${r.color})` }, f.svg);

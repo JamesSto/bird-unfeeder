@@ -2,12 +2,14 @@
 //
 //   npm run simulate -- backfill 30   write 30 days of history straight into DB_PATH
 //   npm run simulate -- live          POST a wake to the running server every 60 s
+// SIM_INTERVAL_MS sets the sleep between wakes (default 60000).
 //   npm run simulate -- once          POST a single wake
 import { Store } from "../src/db.ts";
 import { parsePacket, type RawEvent } from "../src/packet.ts";
 
 const [mode = "once", arg] = process.argv.slice(2);
 const URL_ = process.env.TELEMETRY_URL ?? `http://localhost:${process.env.PORT ?? 8787}/api/telemetry`;
+const INTERVAL_MS = Number(process.env.SIM_INTERVAL_MS ?? 60_000);
 const AUTH = "Basic " + Buffer.from(`${process.env.AUTH_USER ?? "admin"}:${process.env.AUTH_PASSWORD ?? "rogerDodger"}`).toString("base64");
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -134,7 +136,7 @@ if (mode === "backfill") {
         t += rand(2, 6) * 3_600_000;
         dev.resetReason = "power_on";
       }
-      t += last.uptime_ms! + 60_000 + rand(0, 400);
+      t += last.uptime_ms! + INTERVAL_MS + rand(0, 400);
     }
   });
   store.close();
@@ -142,5 +144,5 @@ if (mode === "backfill") {
 } else {
   const dev: Device = { weightUp: false, resetReason: "deep_sleep" };
   await post(wake(Date.now(), Date.now(), dev));
-  if (mode === "live") setInterval(() => post(wake(Date.now(), Date.now(), dev)), 60_000);
+  if (mode === "live") setInterval(() => post(wake(Date.now(), Date.now(), dev)), INTERVAL_MS);
 }

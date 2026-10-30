@@ -2,8 +2,9 @@ import type { Store, WakeRow } from "./db.ts";
 import { RAISE_TIMEOUT_MS } from "./packet.ts";
 
 export const config = {
-  // The device sleeps 60s between wakes; this long without a check-in counts as offline.
-  offlineAfterMs: Number(process.env.OFFLINE_AFTER_MS ?? 5 * 60_000),
+  // This long without a check-in counts as offline. Kept well above the wake interval so the
+  // firmware's sleep period can change without touching the server.
+  offlineAfterMs: Number(process.env.OFFLINE_AFTER_MS ?? 60 * 60_000),
   batteryEmptyMv: Number(process.env.BATTERY_EMPTY_MV ?? 3300),
   batteryLowMv: Number(process.env.BATTERY_LOW_MV ?? 3500),
 };
@@ -143,7 +144,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     alerts.push({
       level: "critical",
       title: "Motor stalled: device is asleep until reset",
-      detail: `The weight didn't reach the limit switch within ${RAISE_TIMEOUT_MS / 1000} s at ${fmt(latest.started_at)}. The firmware stops waking itself after this. Check the line and the motor, then power-cycle it.`,
+      detail: `The weight didn't reach the limit switch within ${RAISE_TIMEOUT_MS / 1000} s at ${fmt(latest.started_at)}.`,
     });
   }
   if (latest && !online && latest.outcome !== "raise_failed") {
@@ -159,16 +160,16 @@ export function buildSummary(store: Store, from: number, to: number, now: number
   const badResets = count(day.resets, "brownout", "crash", "watchdog");
   if (badResets > 0) {
     const parts = day.resets.filter((r) => ["brownout", "crash", "watchdog"].includes(r.k)).map((r) => `${r.n} ${r.k}`);
-    alerts.push({ level: "warning", title: "Unexpected resets in the last 24 h", detail: `${parts.join(", ")}. Brownouts usually mean the battery sags when the motor or Wi-Fi radio kicks in.` });
+    alerts.push({ level: "warning", title: "Unexpected resets in the last 24 h", detail: `${parts.join(", ")}.` });
   }
   const dayTotal = day.outcomes.reduce((s, r) => s + r.n, 0);
   const skipped = count(day.outcomes, "clock_failed", "presence_failed", "setup_failed");
   if (dayTotal > 0 && skipped / dayTotal > 0.05) {
-    alerts.push({ level: "warning", title: "Wakes skipping the presence check", detail: `${skipped} of ${dayTotal} wakes in the last 24 h never checked who's home (NTP sync, /clock_state fetch, or setup failed).` });
+    alerts.push({ level: "warning", title: "Wakes skipping the presence check", detail: `${skipped} of ${dayTotal} wakes in the last 24 h skipped the presence check.` });
   }
   const anomalies = count(day.outcomes, "anomaly");
   if (anomalies > 0) {
-    alerts.push({ level: "warning", title: "Weight in an unexpected position", detail: `${anomalies} wakes in the last 24 h found the weight somewhere the firmware didn't expect.` });
+    alerts.push({ level: "warning", title: "Weight in an unexpected position", detail: `${anomalies} wakes in the last 24 h.` });
   }
   const rank: Record<Level, number> = { critical: 0, serious: 1, warning: 2 };
   alerts.sort((a, b) => rank[a.level] - rank[b.level]);
@@ -182,6 +183,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     online,
     mode: latest?.weight_up == null ? "unknown" : latest.weight_up ? "up" : "down",
     raiseTimeoutMs: RAISE_TIMEOUT_MS,
+    offlineAfterMs: config.offlineAfterMs,
     modeSince,
     alerts,
     battery,

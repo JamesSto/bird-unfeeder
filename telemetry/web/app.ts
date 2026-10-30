@@ -32,6 +32,7 @@ interface Summary {
   online: boolean;
   mode: "up" | "down" | "unknown";
   raiseTimeoutMs: number;
+  offlineAfterMs: number;
   modeSince: number | null;
   alerts: Array<{ level: "critical" | "serious" | "warning"; title: string; detail: string }>;
   battery: { mv: number; adcMv: number | null; at: number; pct: number; slopeMvPerDay: number | null; daysLeft: number | null; emptyMv: number; lowMv: number } | null;
@@ -150,7 +151,7 @@ function renderTiles(d: Summary) {
   const span = RANGE_NAMES[range];
 
   const hero = tile(el, "Current mode", d.mode === "up" ? "Home" : d.mode === "down" ? "Away" : "Unknown", [
-    d.mode === "up" ? "Weight up, limit switch pressed" : d.mode === "down" ? "Weight down" : "No limit-switch reading yet",
+    d.mode === "up" ? "Weight up" : d.mode === "down" ? "Weight down" : "No limit-switch reading yet",
     d.modeSince ? `Since ${fmtTime(d.modeSince)} (${fmtDuration(d.now - d.modeSince)})` : "",
   ], (v) => {
     const sw = h("span", { class: "swatch" });
@@ -183,7 +184,7 @@ function renderTiles(d: Summary) {
   const awake = d.recent.map((r) => r.awake_ms).filter((x): x is number => x !== null);
   const avgAwake = awake.length ? awake.reduce((s, x) => s + x, 0) / awake.length : null;
   tile(el, "Time awake per wake", avgAwake === null ? "–" : `${(avgAwake / 1000).toFixed(1)} s`, [
-    `Average of the last ${awake.length} wakes`,
+    `Last ${awake.length} wakes`,
     d.latest?.build ? `Firmware built ${d.latest.build}` : "",
   ]);
 }
@@ -200,6 +201,7 @@ function renderBattery(d: Summary) {
     to: d.to,
     times: bs.map((b) => b.t),
     bucketMs: d.bucketMs,
+    breakMs: d.offlineAfterMs,
     series: [{ name: "Average", color: "--s1", values: bs.map((b) => b.battery_avg) }],
     band: d.bucketMs > 60_000 ? { lo: bs.map((b) => b.battery_min), hi: bs.map((b) => b.battery_max), color: "--s1", label: "Min – max" } : undefined,
     refs,
@@ -336,10 +338,10 @@ function renderCheckins(d: Summary) {
     tipLabel: "check-ins",
     ref: expected && expected >= 1 ? { v: expected, label: `Expected ≈${Math.round(expected)}` } : undefined,
   });
-  $("checkins-sub").textContent = `Wakes received per ${fmtDuration(d.bucketMs)}. Dips mean missed wakes (Wi-Fi failures never reach the server).`;
+  $("checkins-sub").textContent = `Per ${fmtDuration(d.bucketMs)}`;
   const gl = $("gaps");
   gl.replaceChildren();
-  if (d.coverage.gaps.length === 0) return void h("li", { class: "muted", text: "No gaps longer than 5 minutes." }, gl);
+  if (d.coverage.gaps.length === 0) return void h("li", { class: "muted", text: `No gaps longer than ${fmtDuration(d.offlineAfterMs)}.` }, gl);
   for (const g of d.coverage.gaps.slice(0, 6)) {
     const li = h("li", {}, gl);
     h("strong", { text: fmtDuration(g.end - g.start) }, li);
@@ -355,7 +357,7 @@ function renderTiming(d: Summary) {
     { name: "Wi-Fi connect", color: "--s2", values: bs.map((b) => s(b.wifi_avg)) },
     { name: "NTP sync", color: "--s3", values: bs.map((b) => s(b.ntp_avg)) },
   ];
-  lineChart($("timing"), { from: d.from, to: d.to, times: bs.map((b) => b.t), bucketMs: d.bucketMs, series, yFmt: (v) => `${v.toFixed(1)} s`, yMinSpan: 1, endLabels: true, height: 200 });
+  lineChart($("timing"), { from: d.from, to: d.to, times: bs.map((b) => b.t), bucketMs: d.bucketMs, breakMs: d.offlineAfterMs, series, yFmt: (v) => `${v.toFixed(1)} s`, yMinSpan: 1, endLabels: true, height: 200 });
   legend($("timing-legend"), series.map((x) => ({ color: x.color, label: x.name, line: true })));
 }
 

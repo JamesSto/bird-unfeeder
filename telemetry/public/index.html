@@ -28,20 +28,18 @@
 
     <section class="card">
       <h2>Battery voltage</h2>
-      <p class="sub">Estimated cell voltage (ADC × 2), read at each wake before Wi-Fi starts. The line is the average per bucket; the shaded band is that bucket's min to max.</p>
+      <p class="sub">ADC × 2. Band is min–max.</p>
       <div id="battery" class="chart-box"></div>
     </section>
 
     <section class="card">
       <h2>Mode over time</h2>
-      <p class="sub">Where the weight was when each wake ended, read from the limit switch: up means someone's home, down means nobody is. Gaps are periods with no check-in for over 5 minutes.</p>
       <div id="timeline" class="chart-box"></div>
       <div id="timeline-legend" class="legend"></div>
     </section>
 
     <section class="card">
       <h2>Away mode by hour</h2>
-      <p class="sub">Share of each hour the weight was down (nobody home), in your local time. Look for routines such as work hours and trips.</p>
       <div id="heatmap"></div>
     </section>
 
@@ -56,7 +54,6 @@
 
       <section class="card">
         <h2>Wake cycle timing</h2>
-        <p class="sub">Average seconds per wake. Awake time drives battery drain; slow Wi-Fi or NTP shows up here first.</p>
         <div id="timing" class="chart-box"></div>
         <div id="timing-legend" class="legend"></div>
       </section>
@@ -64,7 +61,7 @@
 
     <section class="card">
       <h2>Motor raise time</h2>
-      <p class="sub">Seconds from motor start to the limit switch on each raise. A creep toward the timeout means a binding line or a weakening battery or motor. ✕ marks a failed raise.</p>
+      <p class="sub">✕ = failed raise.</p>
       <div id="motor" class="chart-box"></div>
     </section>
 
@@ -75,14 +72,13 @@
       </section>
       <section class="card">
         <h2>Reset reasons</h2>
-        <p class="sub">Should be almost all deep-sleep timer. Brownouts point at the battery.</p>
         <div id="resets"></div>
       </section>
     </div>
 
     <section class="card">
       <h2>Recent wakes</h2>
-      <p class="sub">Click a row to see its raw events. * marks a wake whose clock never synced, so its time is estimated from when the server received it.</p>
+      <p class="sub">Click a row for raw events. * = clock not synced, time estimated.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Time</th><th>Outcome</th><th>Weight</th><th class="num">Battery</th><th class="num">Awake</th><th class="num">Wi-Fi</th><th>Reset</th></tr></thead>
