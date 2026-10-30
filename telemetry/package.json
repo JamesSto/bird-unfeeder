@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.web.json",
+    "build": "tsc --singleThreaded -p tsconfig.json && tsc --singleThreaded -p tsconfig.web.json",
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server.js",
-    "dev": "tsc -p tsconfig.web.json && concurrently -k -n web,server \"tsc -p tsconfig.web.json --watch --preserveWatchOutput\" \"tsx watch --env-file-if-exists=.env src/server.ts\"",
+    "dev": "tsc --singleThreaded -p tsconfig.web.json && concurrently -k -n web,server \"tsc --singleThreaded -p tsconfig.web.json --watch --preserveWatchOutput\" \"tsx watch --env-file-if-exists=.env src/server.ts\"",
     "simulate": "tsx --env-file-if-exists=.env scripts/simulate.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+    "typecheck": "tsc --singleThreaded -p tsconfig.json --noEmit && tsc --singleThreaded -p tsconfig.web.json --noEmit"
   },
   "engines": {
     "node": ">=22.13"

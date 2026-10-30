@@ -91,6 +91,17 @@ export class Store {
     return Number(res.lastInsertRowid);
   }
 
+  transaction(fn: () => void) {
+    this.db.exec("BEGIN");
+    try {
+      fn();
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
   latest(): WakeRow | undefined {
     return this.db.prepare(`SELECT ${COLS} FROM wakes ORDER BY started_at DESC LIMIT 1`).get() as WakeRow | undefined;
   }
@@ -120,7 +131,8 @@ export class Store {
   buckets(from: number, to: number, size: number) {
     return this.db
       .prepare(
-        `SELECT (started_at / :size) * :size AS t,
+        // node:sqlite binds JS numbers as REAL; cast so this is integer division.
+        `SELECT (started_at / CAST(:size AS INTEGER)) * CAST(:size AS INTEGER) AS t,
                 COUNT(*)                     AS n,
                 AVG(battery_mv)              AS battery_avg,
                 MIN(battery_mv)              AS battery_min,

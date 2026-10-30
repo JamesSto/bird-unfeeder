@@ -190,6 +190,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
       observedMs,
       offlineMs,
       pct: observedMs > 0 ? 1 - offlineMs / observedMs : null,
+      gapCount: gaps.length,
       gaps: gaps.sort((a, b) => b.end - b.start - (a.end - a.start)).slice(0, 20),
       medianIntervalMs,
     },

@@ -11,12 +11,18 @@ const PORT = Number(process.env.PORT ?? 8787);
 const store = new Store(process.env.DB_PATH ?? "data/telemetry.db");
 const app = new Hono();
 
-const auth = (user?: string, password?: string) =>
-  user && password ? basicAuth({ username: user, password }) : async (_c: unknown, next: () => Promise<void>) => next();
+// Same credentials the firmware sends in post() (arduino/bird_unfeeder/wifi_util.cpp), used for
+// both device ingest and the dashboard.
+const auth = basicAuth({
+  username: process.env.AUTH_USER ?? "admin",
+  password: process.env.AUTH_PASSWORD ?? "rogerDodger",
+  realm: "bird-unfeeder",
+});
+app.use("*", auth);
 
 // Device ingest. The firmware posts to TELEMETRY_URL from secrets.h, so accept the common paths.
-const INGEST_PATHS = ["/api/telemetry", "/telemetry", "/"];
-app.on("POST", INGEST_PATHS, auth(process.env.INGEST_USER, process.env.INGEST_PASSWORD), bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+const INGEST_PATHS = ["/send_telemetry", "/api/telemetry", "/telemetry", "/"];
+app.on("POST", INGEST_PATHS, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
@@ -35,8 +41,6 @@ app.on("POST", INGEST_PATHS, auth(process.env.INGEST_USER, process.env.INGEST_PA
 });
 
 // Dashboard + read API.
-app.use("*", auth(process.env.DASHBOARD_USER, process.env.DASHBOARD_PASSWORD));
-
 app.get("/api/summary", (c) => {
   const now = Date.now();
   const to = Number(c.req.query("to") ?? now);
@@ -54,7 +58,6 @@ app.use("/*", serveStatic({ root: "./public" }));
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`bird-unfeeder telemetry on http://localhost:${info.port}`);
-  if (!process.env.INGEST_USER) console.warn("INGEST_USER/INGEST_PASSWORD not set: accepting unauthenticated telemetry");
 });
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {

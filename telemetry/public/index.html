@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bird Unfeeder</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Bird unfeeder</h1>
+      <div id="last-seen" class="muted">Loading…</div>
+    </div>
+    <div id="ranges" class="ranges" role="group" aria-label="Time range">
+      <button data-range="24h">24 h</button>
+      <button data-range="7d">7 days</button>
+      <button data-range="30d">30 days</button>
+      <button data-range="90d">90 days</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="error" class="alert alert-critical" hidden></div>
+    <div id="alerts" class="alerts"></div>
+    <section id="tiles" class="tiles" aria-label="Current status"></section>
+
+    <section class="card">
+      <h2>Battery voltage</h2>
+      <p class="sub">Estimated cell voltage (ADC × 2), read at each wake before Wi-Fi starts. The line is the average per bucket; the shaded band is that bucket's min to max.</p>
+      <div id="battery" class="chart-box"></div>
+    </section>
+
+    <section class="card">
+      <h2>Mode over time</h2>
+      <p class="sub">Where the weight was when each wake ended, read from the limit switch. Gaps are periods with no check-in for over 5 minutes.</p>
+      <div id="timeline" class="chart-box"></div>
+      <div id="timeline-legend" class="legend"></div>
+    </section>
+
+    <section class="card">
+      <h2>Away mode by hour</h2>
+      <p class="sub">Share of each hour the weight was up, in your local time. Look for routines such as work hours and trips.</p>
+      <div id="heatmap"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <h2>Check-ins</h2>
+        <p class="sub" id="checkins-sub"></p>
+        <div id="checkins" class="chart-box"></div>
+        <h3>Longest gaps</h3>
+        <ul id="gaps" class="gaps"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Wake cycle timing</h2>
+        <p class="sub">Average seconds per wake. Awake time drives battery drain; slow Wi-Fi or NTP shows up here first.</p>
+        <div id="timing" class="chart-box"></div>
+        <div id="timing-legend" class="legend"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Motor raise time</h2>
+      <p class="sub">Seconds from motor start to the limit switch on each raise. A creep toward the 3 s timeout means a binding line or a weakening battery or motor. ✕ marks a failed raise.</p>
+      <div id="motor" class="chart-box"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <h2>Wake outcomes</h2>
+        <div id="outcomes"></div>
+      </section>
+      <section class="card">
+        <h2>Reset reasons</h2>
+        <p class="sub">Should be almost all deep-sleep timer. Brownouts point at the battery.</p>
+        <div id="resets"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Recent wakes</h2>
+      <p class="sub">Click a row to see its raw events. * marks a wake whose clock never synced, so its time is estimated from when the server received it.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Outcome</th><th>Weight</th><th class="num">Battery</th><th class="num">Awake</th><th class="num">Wi-Fi</th><th>Reset</th></tr></thead>
+          <tbody id="recent-body"></tbody>
+        </table>
+      </div>
+      <button id="recent-more" class="more" hidden>Show more</button>
+    </section>
+  </main>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
