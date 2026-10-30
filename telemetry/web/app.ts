@@ -31,6 +31,7 @@ interface Summary {
   latest: WakeRow | null;
   online: boolean;
   mode: "up" | "down" | "unknown";
+  raiseTimeoutMs: number;
   modeSince: number | null;
   alerts: Array<{ level: "critical" | "serious" | "warning"; title: string; detail: string }>;
   battery: { mv: number; adcMv: number | null; at: number; pct: number; slopeMvPerDay: number | null; daysLeft: number | null; emptyMv: number; lowMv: number } | null;
@@ -44,14 +45,16 @@ interface Summary {
 }
 
 const RANGES: Record<string, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000, "90d": 90 * 86_400_000 };
-const STATE_LABEL: Record<State, string> = { up: "Away mode (weight up)", down: "Home mode (weight down)", unknown: "Unknown", offline: "Offline" };
-const STATE_COLOR: Record<State, string> = { up: "--s2", down: "--s1", unknown: "--ink-muted", offline: "--offline" };
+// Weight up (limit switch pressed) = someone home; the firmware raises it when anyone is home.
+const STATE_LABEL: Record<State, string> = { up: "Home mode (weight up)", down: "Away mode (weight down)", unknown: "Unknown", offline: "Offline" };
+const STATE_COLOR: Record<State, string> = { up: "--s1", down: "--s2", unknown: "--ink-muted", offline: "--offline" };
 const OUTCOMES: Record<string, { label: string; color: string; note?: string }> = {
   no_change: { label: "No change needed", color: "--ink-muted" },
-  raised: { label: "Raised weight", color: "--s2" },
-  lowered: { label: "Lowered weight", color: "--s1" },
+  raised: { label: "Raised weight", color: "--s1", note: "(arrived home)" },
+  lowered: { label: "Lowered weight", color: "--s2", note: "(left)" },
   raise_failed: { label: "Raise failed", color: "--critical", note: "(motor timeout)" },
   clock_failed: { label: "NTP sync failed", color: "--warning" },
+  presence_failed: { label: "Clock-state fetch failed", color: "--warning" },
   setup_failed: { label: "Skipped presence check", color: "--warning" },
   anomaly: { label: "Weight out of place", color: "--serious" },
 };
@@ -146,7 +149,7 @@ function renderTiles(d: Summary) {
   el.replaceChildren();
   const span = RANGE_NAMES[range];
 
-  const hero = tile(el, "Current mode", d.mode === "up" ? "Away" : d.mode === "down" ? "Home" : "Unknown", [
+  const hero = tile(el, "Current mode", d.mode === "up" ? "Home" : d.mode === "down" ? "Away" : "Unknown", [
     d.mode === "up" ? "Weight up, limit switch pressed" : d.mode === "down" ? "Weight down" : "No limit-switch reading yet",
     d.modeSince ? `Since ${fmtTime(d.modeSince)} (${fmtDuration(d.now - d.modeSince)})` : "",
   ], (v) => {
@@ -174,7 +177,7 @@ function renderTiles(d: Summary) {
   const durs = raises.map((m) => m.raise_ms!).filter((x) => x !== null).sort((a, b) => a - b);
   tile(el, `Motor runs, ${span}`, `${raises.length + lowers + fails}`, [
     `${plural(raises.length, "raise")} · ${plural(lowers, "lower")}` + (fails ? ` · ${fails} failed` : ""),
-    durs.length ? `Median raise ${(durs[Math.floor(durs.length / 2)] / 1000).toFixed(2)} s (3 s timeout)` : "No raises",
+    durs.length ? `Median raise ${(durs[Math.floor(durs.length / 2)] / 1000).toFixed(2)} s (${d.raiseTimeoutMs / 1000} s timeout)` : "No raises",
   ]);
 
   const awake = d.recent.map((r) => r.awake_ms).filter((x): x is number => x !== null);
@@ -227,7 +230,7 @@ function renderTimeline(d: Summary) {
   const totals: Record<State, number> = { up: 0, down: 0, unknown: 0, offline: 0 };
   for (const s of d.segments) totals[s.state] += s.end - s.start;
   const all = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-  legend($("timeline-legend"), (["down", "up", "offline", "unknown"] as State[]).filter((s) => totals[s] > 0).map((s) => ({ color: STATE_COLOR[s], label: `${STATE_LABEL[s]} ${((totals[s] / all) * 100).toFixed(0)}%`, hatch: s === "offline" })));
+  legend($("timeline-legend"), (["up", "down", "offline", "unknown"] as State[]).filter((s) => totals[s] > 0).map((s) => ({ color: STATE_COLOR[s], label: `${STATE_LABEL[s]} ${((totals[s] / all) * 100).toFixed(0)}%`, hatch: s === "offline" })));
 }
 
 function legend(el: HTMLElement, items: Array<{ color: string; label: string; line?: boolean; hatch?: boolean }>) {
@@ -240,17 +243,17 @@ function legend(el: HTMLElement, items: Array<{ color: string; label: string; li
   }
 }
 
-// Days x hours: share of observed time the weight was up (away mode).
+// Days x hours: share of observed time in away mode (weight down).
 function renderHeatmap(d: Summary) {
   const el = $("heatmap");
   el.replaceChildren();
   const startDay = new Date(d.from);
   startDay.setHours(0, 0, 0, 0);
-  const days: Array<{ t: number; cells: Array<{ up: number; seen: number }> }> = [];
+  const days: Array<{ t: number; cells: Array<{ away: number; seen: number }> }> = [];
   for (let t = startDay.getTime(); t < d.to; ) {
     const next = new Date(t);
     next.setDate(next.getDate() + 1);
-    const cells = Array.from({ length: 24 }, () => ({ up: 0, seen: 0 }));
+    const cells = Array.from({ length: 24 }, () => ({ away: 0, seen: 0 }));
     days.push({ t, cells });
     t = next.getTime();
   }
@@ -272,7 +275,7 @@ function renderHeatmap(d: Summary) {
       if (di >= 0) {
         const c = days[di].cells[dt.getHours()];
         c.seen += stop - t;
-        if (s.state === "up") c.up += stop - t;
+        if (s.state === "down") c.away += stop - t;
       }
       t = stop;
     }
@@ -291,7 +294,7 @@ function renderHeatmap(d: Summary) {
       if (c.seen < 60_000) {
         cell.classList.add("hm-none");
       } else {
-        const p = c.up / c.seen;
+        const p = c.away / c.seen;
         cell.style.background = p < 0.005 ? "var(--hm-zero)" : `color-mix(in oklab, var(--s2) ${Math.round(18 + p * 82)}%, var(--surface))`;
       }
       cell.addEventListener("pointermove", (e) => {
@@ -299,7 +302,7 @@ function renderHeatmap(d: Summary) {
         const rows: TipRow[] = c.seen < 60_000
           ? [{ value: "No data", label: "offline or out of range" }]
           : [
-              { value: `${Math.round((c.up / c.seen) * 100)}%`, label: "away mode (weight up)", color: "--s2", shape: "rect" },
+              { value: `${Math.round((c.away / c.seen) * 100)}%`, label: "away mode (weight down)", color: "--s2", shape: "rect" },
               { value: fmtDuration(c.seen), label: "observed" },
             ];
         showTip(e.clientX, e.clientY, `${fmtTime(t0)} – ${fmtTime(t0 + 3_600_000, false)}`, rows);
@@ -360,10 +363,11 @@ function renderMotor(d: Summary) {
   const el = $("motor");
   const runs = d.motor.filter((m) => m.outcome !== "lowered" && m.raise_ms !== null);
   if (runs.length === 0) return empty(el, "No weight raises in this range");
-  const maxS = Math.max(3.4, ...runs.map((r) => r.raise_ms! / 1000 + 0.2));
+  const limit = d.raiseTimeoutMs / 1000;
+  const maxS = Math.max(limit + 0.5, ...runs.map((r) => r.raise_ms! / 1000 + 0.2));
   const f = frame(el, { from: d.from, to: d.to, y0: 0, y1: maxS, yFmt: (v) => `${v} s`, height: 200 });
-  svgEl("line", { x1: f.m.l, x2: f.w - f.m.r, y1: f.y(3), y2: f.y(3), class: "ref", stroke: "var(--critical)" }, f.svg);
-  svgEl("text", { x: f.w - f.m.r - 4, y: f.y(3) - 5, "text-anchor": "end", class: "ref-label" }, f.svg).textContent = "Timeout (3 s)";
+  svgEl("line", { x1: f.m.l, x2: f.w - f.m.r, y1: f.y(limit), y2: f.y(limit), class: "ref", stroke: "var(--critical)" }, f.svg);
+  svgEl("text", { x: f.w - f.m.r - 4, y: f.y(limit) - 5, "text-anchor": "end", class: "ref-label" }, f.svg).textContent = `Timeout (${limit} s)`;
   for (const r of runs) {
     const failed = r.outcome === "raise_failed";
     const cx = f.x(r.t);
@@ -422,7 +426,7 @@ async function toggleEvents(tr: HTMLTableRowElement, w: WakeRow) {
     const li = h("li", {}, list);
     h("code", { class: "ev-time", text: `+${(((e.uptime_ms ?? 0) as number) / 1000).toFixed(2)} s` }, li);
     h("strong", { text: e.event }, li);
-    const extras = Object.entries(e).filter(([k]) => !["event", "ts", "uptime_ms", "unix_time"].includes(k));
+    const extras = Object.entries(e).filter(([k, v]) => !["event", "ts", "uptime_ms", "unix_time"].includes(k) && v !== "");
     h("span", { class: "muted", text: " " + extras.map(([k, v]) => `${k}=${v}`).join("  ") }, li);
   }
 }

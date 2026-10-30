@@ -24,7 +24,7 @@ npm run simulate -- live                              # one wake/minute to the r
 
 ## How wakes are interpreted
 
-- **Mode** is the limit switch at the end of the wake: pressed = weight up = away mode.
+- **Mode** is the limit switch at the end of the wake: pressed = weight up = someone home.
   `FOUND_CLOCK_STATE_*` is ignored because the firmware always reports HOME there.
 - **Timestamps** are rebuilt from `uptime_ms` against the latest event with a valid clock, or against
   the time the server received the packet if NTP never synced.

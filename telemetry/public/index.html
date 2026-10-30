@@ -34,14 +34,14 @@
 
     <section class="card">
       <h2>Mode over time</h2>
-      <p class="sub">Where the weight was when each wake ended, read from the limit switch. Gaps are periods with no check-in for over 5 minutes.</p>
+      <p class="sub">Where the weight was when each wake ended, read from the limit switch: up means someone's home, down means nobody is. Gaps are periods with no check-in for over 5 minutes.</p>
       <div id="timeline" class="chart-box"></div>
       <div id="timeline-legend" class="legend"></div>
     </section>
 
     <section class="card">
       <h2>Away mode by hour</h2>
-      <p class="sub">Share of each hour the weight was up, in your local time. Look for routines such as work hours and trips.</p>
+      <p class="sub">Share of each hour the weight was down (nobody home), in your local time. Look for routines such as work hours and trips.</p>
       <div id="heatmap"></div>
     </section>
 
@@ -64,7 +64,7 @@
 
     <section class="card">
       <h2>Motor raise time</h2>
-      <p class="sub">Seconds from motor start to the limit switch on each raise. A creep toward the 3 s timeout means a binding line or a weakening battery or motor. ✕ marks a failed raise.</p>
+      <p class="sub">Seconds from motor start to the limit switch on each raise. A creep toward the timeout means a binding line or a weakening battery or motor. ✕ marks a failed raise.</p>
       <div id="motor" class="chart-box"></div>
     </section>
 

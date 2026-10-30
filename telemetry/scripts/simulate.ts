@@ -48,6 +48,7 @@ function wake(start: number, now: number, dev: Device): RawEvent[] {
       clock_valid: clock,
       uptime_ms: Math.round(up),
       limit_switch_pressed: dev.weightUp,
+      msg: "",
       ...extra,
     });
   };
@@ -72,19 +73,27 @@ function wake(start: number, now: number, dev: Device): RawEvent[] {
   synced = true;
   add("CLOCK_SET");
   up += rand(400, 1100);
+  // The firmware has no to_string() case for CLOCK_STATE_FETCH_FAILURE, so it arrives as UNKNOWN.
+  if (Math.random() < 0.002) {
+    add("UNKNOWN", { msg: "get failed" });
+    up += 3;
+    add("ENTERING_SLEEP");
+    return events;
+  }
   // Mirrors the firmware: this event always says HOME.
   add("FOUND_CLOCK_STATE_HOME");
   const home = someoneHome(start, now);
-  if (home && dev.weightUp) {
+  // Someone home: raise the weight. Nobody home: lower it.
+  if (!home && dev.weightUp) {
     add("STARTING_LOWER_WEIGHT");
-    up += 2000;
+    up += 5000;
     dev.weightUp = false;
     add("FINISHED_LOWER_WEIGHT");
-  } else if (!home && !dev.weightUp) {
+  } else if (home && !dev.weightUp) {
     add("STARTING_RAISE_WEIGHT");
     const sinceSwap = ((now - start) / 86_400_000) % 18;
-    up += Math.min(3000, rand(1500, 1900) + sinceSwap * 70);
-    if (up - events[events.length - 1].uptime_ms! >= 3000) {
+    up += Math.min(8000, rand(4000, 5000) + sinceSwap * 190);
+    if (up - events[events.length - 1].uptime_ms! >= 8000) {
       add("RAISE_WEIGHT_FAILURE");
     } else {
       dev.weightUp = true;

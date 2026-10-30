@@ -12,6 +12,7 @@ export const EVENT_NAMES = [
   "CLOCK_SET",
   "WIFI_CONNECTED",
   "WIFI_CONNECTION_FAILED",
+  "CLOCK_STATE_FETCH_FAILURE",
   "FOUND_CLOCK_STATE_HOME",
   "FOUND_CLOCK_STATE_AWAY",
   "WEIGHT_NOT_AT_TOP_WHEN_LOWERING",
@@ -21,6 +22,7 @@ export const EVENT_NAMES = [
   "FINISHED_LOWER_WEIGHT",
   "FINISHED_RAISE_WEIGHT",
   "RAISE_WEIGHT_FAILURE",
+  "POST_FAILURE",
   "ENTERING_SLEEP",
 ] as const;
 
@@ -30,6 +32,7 @@ export interface RawEvent {
   clock_valid?: boolean;
   uptime_ms?: number;
   limit_switch_pressed?: boolean;
+  msg?: string;
   // Only on WOKE_UP
   battery_adc_mv?: number;
   battery_mv_est?: number;
@@ -45,13 +48,17 @@ export interface RawEvent {
 
 // What a wake cycle ended up doing.
 export type Outcome =
-  | "raised" // weight raised to the limit switch (nobody home)
-  | "lowered" // weight lowered (someone home)
+  | "raised" // weight raised to the limit switch (someone home)
+  | "lowered" // weight lowered (nobody home)
   | "no_change" // checked presence, weight was already where it should be
-  | "raise_failed" // motor ran 3s without hitting the switch; device sleeps until manually reset
+  | "raise_failed" // motor ran RAISE_TIMEOUT_MS without hitting the switch; device sleeps until manually reset
   | "clock_failed" // NTP sync timed out, presence never checked
+  | "presence_failed" // fetching /clock_state failed, presence never checked
   | "setup_failed" // got through Wi-Fi/NTP but never checked presence
   | "anomaly"; // a "weight in the wrong place" guard fired
+
+// Matches RAISE_WEIGHT_LIMIT_MS in arduino/bird_unfeeder/motor_routines.h.
+export const RAISE_TIMEOUT_MS = 8000;
 
 export interface Wake {
   receivedAt: number;
@@ -60,7 +67,7 @@ export interface Wake {
   clockValid: boolean;
   awakeMs: number | null;
   outcome: Outcome;
-  // Weight position when the device went back to sleep. Up (switch pressed) means away mode.
+  // Weight position when the device went back to sleep. Up (switch pressed) means home mode.
   weightUp: boolean | null;
   batteryMv: number | null;
   batteryAdcMv: number | null;
@@ -113,6 +120,8 @@ export function parsePacket(body: unknown, receivedAt: number): Wake {
   else if (has("FINISHED_LOWER_WEIGHT")) outcome = "lowered";
   else if (has("WEIGHT_NOT_AT_TOP_WHEN_LOWERING") || has("WEIGHT_ALREADY_AT_TOP_WHEN_RAISING")) outcome = "anomaly";
   else if (has("CLOCK_SET_FAILED")) outcome = "clock_failed";
+  // to_string() in the firmware has no case for CLOCK_STATE_FETCH_FAILURE, so it arrives as UNKNOWN.
+  else if (has("CLOCK_STATE_FETCH_FAILURE") || has("UNKNOWN")) outcome = "presence_failed";
   else if (has("FOUND_CLOCK_STATE_HOME") || has("FOUND_CLOCK_STATE_AWAY")) outcome = "no_change";
   else outcome = "setup_failed";
 

@@ -1,4 +1,5 @@
 import type { Store, WakeRow } from "./db.ts";
+import { RAISE_TIMEOUT_MS } from "./packet.ts";
 
 export const config = {
   // The device sleeps 60s between wakes; this long without a check-in counts as offline.
@@ -142,7 +143,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     alerts.push({
       level: "critical",
       title: "Motor stalled: device is asleep until reset",
-      detail: `The weight didn't reach the limit switch within 3 s at ${fmt(latest.started_at)}. The firmware stops waking itself after this. Check the line and the motor, then power-cycle it.`,
+      detail: `The weight didn't reach the limit switch within ${RAISE_TIMEOUT_MS / 1000} s at ${fmt(latest.started_at)}. The firmware stops waking itself after this. Check the line and the motor, then power-cycle it.`,
     });
   }
   if (latest && !online && latest.outcome !== "raise_failed") {
@@ -161,9 +162,9 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     alerts.push({ level: "warning", title: "Unexpected resets in the last 24 h", detail: `${parts.join(", ")}. Brownouts usually mean the battery sags when the motor or Wi-Fi radio kicks in.` });
   }
   const dayTotal = day.outcomes.reduce((s, r) => s + r.n, 0);
-  const skipped = count(day.outcomes, "clock_failed", "setup_failed");
+  const skipped = count(day.outcomes, "clock_failed", "presence_failed", "setup_failed");
   if (dayTotal > 0 && skipped / dayTotal > 0.05) {
-    alerts.push({ level: "warning", title: "Wakes skipping the presence check", detail: `${skipped} of ${dayTotal} wakes in the last 24 h never checked who's home (NTP failure or setup error).` });
+    alerts.push({ level: "warning", title: "Wakes skipping the presence check", detail: `${skipped} of ${dayTotal} wakes in the last 24 h never checked who's home (NTP sync, /clock_state fetch, or setup failed).` });
   }
   const anomalies = count(day.outcomes, "anomaly");
   if (anomalies > 0) {
@@ -180,6 +181,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     latest,
     online,
     mode: latest?.weight_up == null ? "unknown" : latest.weight_up ? "up" : "down",
+    raiseTimeoutMs: RAISE_TIMEOUT_MS,
     modeSince,
     alerts,
     battery,
