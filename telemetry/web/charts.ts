@@ -281,9 +281,9 @@ export function empty(container: HTMLElement, text: string) {
 // ---------------------------------------------------------------------------
 // Columns (one per bucket) growing from a zero baseline.
 
-export function columns(container: HTMLElement, o: { from: number; to: number; bucketMs: number; times: number[]; values: number[]; color: string; yFmt: (v: number) => string; tipLabel: string; ref?: { v: number; label: string }; tipExtra?: (i: number) => TipRow[]; height?: number }) {
+export function columns(container: HTMLElement, o: { from: number; to: number; bucketMs: number; times: number[]; values: number[]; color: string; yFmt: (v: number) => string; tipLabel: string; tipExtra?: (i: number) => TipRow[]; height?: number }) {
   if (o.times.length === 0) return empty(container, "No data in this range");
-  const max = Math.max(...o.values, o.ref?.v ?? 0, 1);
+  const max = Math.max(...o.values, 1);
   const ticks = niceTicks(0, max * 1.05);
   const f = frame(container, { from: o.from, to: o.to, y0: 0, y1: ticks[ticks.length - 1], yFmt: o.yFmt, yTicks: ticks, height: o.height ?? 160 });
   const slot = Math.max(1, f.x(o.from + o.bucketMs) - f.x(o.from));
@@ -300,10 +300,6 @@ export function columns(container: HTMLElement, o: { from: number; to: number; b
     hit.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, `${fmtTime(t)} – ${fmtTime(t + o.bucketMs, false)}`, [{ value: o.yFmt(v), label: o.tipLabel, color: o.color, shape: "rect" }, ...(o.tipExtra?.(i) ?? [])]));
     hit.addEventListener("pointerleave", hideTip);
   });
-  if (o.ref) {
-    svgEl("line", { x1: f.m.l, x2: f.w - f.m.r, y1: f.y(o.ref.v), y2: f.y(o.ref.v), class: "ref", stroke: "var(--ink-muted)" }, f.svg);
-    svgEl("text", { x: f.w - f.m.r - 4, y: f.y(o.ref.v) - 5, "text-anchor": "end", class: "ref-label" }, f.svg).textContent = o.ref.label;
-  }
 }
 
 // ---------------------------------------------------------------------------

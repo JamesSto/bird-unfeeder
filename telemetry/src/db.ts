@@ -157,6 +157,15 @@ export class Store {
     }>;
   }
 
+  counts(from: number, to: number, size: number): Array<{ t: number; n: number }> {
+    return this.db
+      .prepare(
+        `SELECT (started_at / CAST(:size AS INTEGER)) * CAST(:size AS INTEGER) AS t, COUNT(*) AS n
+         FROM wakes WHERE started_at >= :from AND started_at < :to GROUP BY 1 ORDER BY 1`,
+      )
+      .all({ size, from, to }) as Array<{ t: number; n: number }>;
+  }
+
   batterySince(from: number): Array<{ t: number; v: number }> {
     return this.db
       .prepare(`SELECT started_at AS t, battery_mv AS v FROM wakes WHERE started_at >= ? AND battery_mv IS NOT NULL ORDER BY started_at`)

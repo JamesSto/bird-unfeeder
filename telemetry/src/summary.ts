@@ -188,6 +188,7 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     alerts,
     battery,
     buckets: store.buckets(from, end, bucketMs),
+    checkinsPerHour: store.counts(from, end, 3_600_000),
     segments,
     coverage: {
       wakes: pts.length - (before ? 1 : 0),

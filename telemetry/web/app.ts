@@ -37,6 +37,7 @@ interface Summary {
   alerts: Array<{ level: "critical" | "serious" | "warning"; title: string; detail: string }>;
   battery: { mv: number; adcMv: number | null; at: number; pct: number; slopeMvPerDay: number | null; daysLeft: number | null; emptyMv: number; lowMv: number } | null;
   buckets: Array<{ t: number; n: number; battery_avg: number | null; battery_min: number | null; battery_max: number | null; awake_avg: number | null; wifi_avg: number | null; ntp_avg: number | null; rssi_avg: number | null }>;
+  checkinsPerHour: Array<{ t: number; n: number }>;
   segments: Array<{ start: number; end: number; state: State }>;
   coverage: { wakes: number; observedMs: number; offlineMs: number; pct: number | null; gapCount: number; gaps: Array<{ start: number; end: number }>; medianIntervalMs: number | null };
   motor: Array<{ id: number; t: number; outcome: string; raise_ms: number | null }>;
@@ -325,20 +326,17 @@ function renderHeatmap(d: Summary) {
 }
 
 function renderCheckins(d: Summary) {
-  const bs = d.buckets;
-  const expected = d.coverage.medianIntervalMs ? d.bucketMs / d.coverage.medianIntervalMs : null;
+  const hours = d.checkinsPerHour;
   columns($("checkins"), {
     from: d.from,
     to: d.to,
-    bucketMs: d.bucketMs,
-    times: bs.map((b) => b.t),
-    values: bs.map((b) => b.n),
+    bucketMs: 3_600_000,
+    times: hours.map((b) => b.t),
+    values: hours.map((b) => b.n),
     color: "--s1",
     yFmt: (v) => v.toLocaleString(),
     tipLabel: "check-ins",
-    ref: expected && expected >= 1 ? { v: expected, label: `Expected ≈${Math.round(expected)}` } : undefined,
   });
-  $("checkins-sub").textContent = `Per ${fmtDuration(d.bucketMs)}`;
   const gl = $("gaps");
   gl.replaceChildren();
   if (d.coverage.gaps.length === 0) return void h("li", { class: "muted", text: `No gaps longer than ${fmtDuration(d.offlineAfterMs)}.` }, gl);
