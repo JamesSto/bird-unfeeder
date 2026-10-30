@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": [],
+    "rootDir": "web",
+    "outDir": "public/js"
+  },
+  "include": ["web"]
+}
