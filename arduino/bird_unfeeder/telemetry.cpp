@@ -63,9 +63,10 @@ inline uint32_t read_battery_adc_mv() {
   return sum / kSamples;
 }
 
-void addTelemetryEvent(TelemetryEvent event) {
+void addTelemetryEvent(TelemetryEvent event, String msg) {
   JsonDocument doc;
   doc["event"] = to_string(event);
+  doc["msg"] = msg;
 
   // Every event
   time_t now = time(nullptr);

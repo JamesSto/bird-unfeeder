@@ -10,7 +10,7 @@
 std::optional<bool> anyone_home() {
   String clock_state_str = get("https://internal.tinkerdeck.com/clock_state");
   if (clock_state_str == "") {
-    addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE);
+    addTelemetryEvent(TelemetryEvent::CLOCK_STATE_FETCH_FAILURE, "get failed");
     return std::nullopt;
   }
   JsonDocument state_json = DynamicJsonDocument(clock_state_str.length());

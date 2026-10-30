@@ -92,6 +92,10 @@ int post(String url, String payload) {
   int httpsCode = https.POST(payload);
 
   https.end();
-
+  if (httpsCode < 200 || httpsCode >= 300) {
+    Serial.printf("Post failed to %s, error code %d\n", url.c_str(), httpsCode);
+  } else {
+    Serial.printf("Post success to %s\n", url.c_str());
+  }
   return httpsCode;
 }

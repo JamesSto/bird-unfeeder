@@ -21,11 +21,12 @@ enum class TelemetryEvent {
   FINISHED_LOWER_WEIGHT,
   FINISHED_RAISE_WEIGHT,
   RAISE_WEIGHT_FAILURE,
+  POST_FAILURE,
   ENTERING_SLEEP
 };
 
 extern std::vector<JsonDocument> telemetry_messages;
 
-void addTelemetryEvent(TelemetryEvent event);
+void addTelemetryEvent(TelemetryEvent event, String msg="");
 
 String getTelemetryPayload();
