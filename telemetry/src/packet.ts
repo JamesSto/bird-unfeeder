@@ -58,7 +58,7 @@ export type Outcome =
   | "anomaly"; // a "weight in the wrong place" guard fired
 
 // Matches RAISE_WEIGHT_LIMIT_MS in arduino/bird_unfeeder/motor_routines.h.
-export const RAISE_TIMEOUT_MS = 8000;
+export const RAISE_TIMEOUT_MS = 14000;
 
 export interface Wake {
   receivedAt: number;
@@ -87,6 +87,9 @@ export class PacketError extends Error {}
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+// Newer firmware puts the measured motor run time (ms) in FINISHED_RAISE_WEIGHT's msg.
+// Older builds send "", so callers fall back to the uptime difference between events.
+const motorMs = (v: unknown): number | null => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : null);
 
 export function parsePacket(body: unknown, receivedAt: number): Wake {
   if (!Array.isArray(body) || body.length === 0) {
@@ -148,7 +151,10 @@ export function parsePacket(body: unknown, receivedAt: number): Wake {
     build: str(woke?.build),
     wifiMs: between("CONNECTING_TO_WIFI", "WIFI_CONNECTED"),
     ntpMs: between("WIFI_CONNECTED", "CLOCK_SET"),
-    raiseMs: between("STARTING_RAISE_WEIGHT", "FINISHED_RAISE_WEIGHT") ?? between("STARTING_RAISE_WEIGHT", "RAISE_WEIGHT_FAILURE"),
+    raiseMs:
+      motorMs(find("FINISHED_RAISE_WEIGHT")?.msg) ??
+      between("STARTING_RAISE_WEIGHT", "FINISHED_RAISE_WEIGHT") ??
+      between("STARTING_RAISE_WEIGHT", "RAISE_WEIGHT_FAILURE"),
     events: stamped,
   };
 }

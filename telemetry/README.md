@@ -19,7 +19,7 @@ The device can POST to `/send_telemetry` (what the firmware uses), `/api/telemet
 
 ```sh
 DB_PATH=data/sim.db npm run simulate -- backfill 30   # 30 days of history
-npm run simulate -- live                              # one wake/minute to the running server
+npm run simulate -- live                              # one wake every 15 min to the running server
 ```
 
 ## How wakes are interpreted
@@ -28,5 +28,5 @@ npm run simulate -- live                              # one wake/minute to the r
   `FOUND_CLOCK_STATE_*` is ignored because the firmware always reports HOME there.
 - **Timestamps** are rebuilt from `uptime_ms` against the latest event with a valid clock, or against
   the time the server received the packet if NTP never synced.
-- **Offline** means no check-in for `OFFLINE_AFTER_MS` (1 hour). Wakes where Wi-Fi fails never
+- **Offline** means no check-in for `OFFLINE_AFTER_MS` (1 hour, i.e. about four missed 15-minute wakes). Wakes where Wi-Fi fails never
   reach the server, so they show up as gaps.

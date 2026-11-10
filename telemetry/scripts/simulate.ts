@@ -1,15 +1,15 @@
 // Generates packets shaped exactly like the firmware's (arduino/bird_unfeeder/telemetry.cpp).
 //
 //   npm run simulate -- backfill 30   write 30 days of history straight into DB_PATH
-//   npm run simulate -- live          POST a wake to the running server every 60 s
-// SIM_INTERVAL_MS sets the sleep between wakes (default 60000).
+//   npm run simulate -- live          POST a wake to the running server every 15 min
+// SIM_INTERVAL_MS sets the sleep between wakes (default 900000, matching POLLING_PERIOD_US).
 //   npm run simulate -- once          POST a single wake
 import { Store } from "../src/db.ts";
 import { parsePacket, type RawEvent } from "../src/packet.ts";
 
 const [mode = "once", arg] = process.argv.slice(2);
 const URL_ = process.env.TELEMETRY_URL ?? `http://localhost:${process.env.PORT ?? 8787}/api/telemetry`;
-const INTERVAL_MS = Number(process.env.SIM_INTERVAL_MS ?? 60_000);
+const INTERVAL_MS = Number(process.env.SIM_INTERVAL_MS ?? 15 * 60_000);
 const AUTH = "Basic " + Buffer.from(`${process.env.AUTH_USER ?? "admin"}:${process.env.AUTH_PASSWORD ?? "rogerDodger"}`).toString("base64");
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -88,18 +88,20 @@ function wake(start: number, now: number, dev: Device): RawEvent[] {
   // Someone home: raise the weight. Nobody home: lower it.
   if (!home && dev.weightUp) {
     add("STARTING_LOWER_WEIGHT");
-    up += 5000;
+    up += 9000; // LOWER_WEIGHT_DURATION_MS
     dev.weightUp = false;
     add("FINISHED_LOWER_WEIGHT");
   } else if (home && !dev.weightUp) {
     add("STARTING_RAISE_WEIGHT");
     const sinceSwap = ((now - start) / 86_400_000) % 18;
-    up += Math.min(8000, rand(4000, 5000) + sinceSwap * 190);
-    if (up - events[events.length - 1].uptime_ms! >= 8000) {
+    // RAISE_WEIGHT_LIMIT_MS is 14 s; a weak battery slows the motor until it times out.
+    const raiseMs = Math.round(Math.min(14000, rand(7000, 9000) + sinceSwap * 340));
+    up += raiseMs;
+    if (raiseMs >= 14000) {
       add("RAISE_WEIGHT_FAILURE");
     } else {
       dev.weightUp = true;
-      add("FINISHED_RAISE_WEIGHT");
+      add("FINISHED_RAISE_WEIGHT", { msg: String(raiseMs) });
     }
   }
   up += 3;
@@ -121,11 +123,11 @@ if (mode === "backfill") {
   store.transaction(() => {
     for (let t = now - days * 86_400_000; t < now; ) {
       // Occasional outages: Wi-Fi drops that never reach the server.
-      if (Math.random() < 0.0008) {
+      if (Math.random() < 0.012) {
         t += rand(10, 90) * 60_000;
         continue;
       }
-      if (Math.random() < 0.0003) dev.resetReason = "brownout";
+      if (Math.random() < 0.0045) dev.resetReason = "brownout";
       const events = wake(t, now, dev);
       const last = events[events.length - 1];
       const failed = events.some((e) => e.event === "RAISE_WEIGHT_FAILURE");
