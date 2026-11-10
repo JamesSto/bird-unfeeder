@@ -21,15 +21,19 @@ interface WakeRow {
   wifi_ms: number | null;
   ntp_ms: number | null;
   raise_ms: number | null;
+  is_test: number;
 }
-type State = "up" | "down" | "unknown" | "offline";
+type State = "up" | "down" | "unknown" | "offline" | "testing";
 interface Summary {
   now: number;
   from: number;
   to: number;
   bucketMs: number;
   latest: WakeRow | null;
+  lastSeen: WakeRow | null; // includes test wakes
   online: boolean;
+  includeTests: boolean;
+  testWakes: number;
   mode: "up" | "down" | "unknown";
   raiseTimeoutMs: number;
   offlineAfterMs: number;
@@ -48,8 +52,8 @@ interface Summary {
 
 const RANGES: Record<string, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000, "90d": 90 * 86_400_000 };
 // Weight up (limit switch pressed) = someone home; the firmware raises it when anyone is home.
-const STATE_LABEL: Record<State, string> = { up: "Home mode (weight up)", down: "Away mode (weight down)", unknown: "Unknown", offline: "Offline" };
-const STATE_COLOR: Record<State, string> = { up: "--s1", down: "--s2", unknown: "--ink-muted", offline: "--offline" };
+const STATE_LABEL: Record<State, string> = { up: "Home mode (weight up)", down: "Away mode (weight down)", unknown: "Unknown", offline: "Offline", testing: "Testing (hidden)" };
+const STATE_COLOR: Record<State, string> = { up: "--s1", down: "--s2", unknown: "--ink-muted", offline: "--offline", testing: "--warning" };
 const OUTCOMES: Record<string, { label: string; color: string; note?: string }> = {
   no_change: { label: "No change needed", color: "--ink-muted" },
   raised: { label: "Raised weight", color: "--s1", note: "(arrived home)" },
@@ -74,6 +78,11 @@ const $ = (id: string) => document.getElementById(id)!;
 let range = RANGES[location.hash.slice(1)] ? location.hash.slice(1) : "7d";
 let data: Summary | null = null;
 let recentShown = 25;
+// Inferred test wakes (src/classify.ts) are hidden unless this is on. Remembered per browser.
+let showTests = false;
+try {
+  showTests = localStorage.getItem("showTests") === "1";
+} catch {}
 
 // ---------------------------------------------------------------------------
 
@@ -81,7 +90,7 @@ async function load() {
   document.body.classList.add("loading");
   try {
     const now = Date.now();
-    const res = await fetch(`api/summary?from=${now - RANGES[range]}&to=${now}`);
+    const res = await fetch(`api/summary?from=${now - RANGES[range]}&to=${now}${showTests ? "&tests=1" : ""}`);
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     data = (await res.json()) as Summary;
     $("error").hidden = true;
@@ -100,8 +109,14 @@ function render() {
   renderHeader(d);
   renderAlerts(d);
   renderTiles(d);
+  const count = $("test-count");
+  count.hidden = d.testWakes === 0;
+  count.textContent = String(d.testWakes);
+  count.title = `${d.testWakes} test wakes in this range`;
   if (!d.latest) {
-    for (const id of ["battery", "timeline", "heatmap", "checkins", "timing", "motor", "outcomes", "resets"]) empty($(id), "No telemetry yet. Waiting for the device to check in.");
+    const msg = d.lastSeen ? "Only inferred test data so far. Turn on “Show test data” to see it." : "No telemetry yet. Waiting for the device to check in.";
+    for (const id of ["battery", "timeline", "heatmap", "checkins", "timing", "motor", "outcomes", "resets"]) empty($(id), msg);
+    renderRecent(d);
     return;
   }
   renderBattery(d);
@@ -118,10 +133,10 @@ function render() {
 function renderHeader(d: Summary) {
   const el = $("last-seen");
   el.replaceChildren();
-  if (!d.latest) return void (el.textContent = "No check-ins yet");
+  if (!d.lastSeen) return void (el.textContent = "No check-ins yet");
   const dot = h("span", { class: `status-dot ${d.online ? "ok" : "bad"}` }, el);
   dot.setAttribute("aria-hidden", "true");
-  h("span", { text: `${d.online ? "Online" : "Offline"} · last check-in ${fmtDuration(d.now - d.latest.ended_at)} ago` }, el);
+  h("span", { text: `${d.online ? "Online" : "Offline"} · last check-in ${fmtDuration(d.now - d.lastSeen.ended_at)} ago${d.lastSeen.is_test ? " (test)" : ""}` }, el);
 }
 
 function renderAlerts(d: Summary) {
@@ -230,10 +245,10 @@ function renderTimeline(d: Summary) {
     r.addEventListener("pointerleave", hideTip);
   }
   // Share of observed time per state, for the legend.
-  const totals: Record<State, number> = { up: 0, down: 0, unknown: 0, offline: 0 };
+  const totals: Record<State, number> = { up: 0, down: 0, unknown: 0, offline: 0, testing: 0 };
   for (const s of d.segments) totals[s.state] += s.end - s.start;
   const all = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-  legend($("timeline-legend"), (["up", "down", "offline", "unknown"] as State[]).filter((s) => totals[s] > 0).map((s) => ({ color: STATE_COLOR[s], label: `${STATE_LABEL[s]} ${((totals[s] / all) * 100).toFixed(0)}%`, hatch: s === "offline" })));
+  legend($("timeline-legend"), (["up", "down", "offline", "testing", "unknown"] as State[]).filter((s) => totals[s] > 0).map((s) => ({ color: STATE_COLOR[s], label: `${STATE_LABEL[s]} ${((totals[s] / all) * 100).toFixed(0)}%`, hatch: s === "offline" })));
 }
 
 function legend(el: HTMLElement, items: Array<{ color: string; label: string; line?: boolean; hatch?: boolean }>) {
@@ -388,7 +403,7 @@ function renderRecent(d: Summary) {
   const body = $("recent-body");
   body.replaceChildren();
   for (const w of d.recent.slice(0, recentShown)) {
-    const tr = h("tr", { class: "wake-row" }, body);
+    const tr = h("tr", { class: w.is_test ? "wake-row is-test" : "wake-row" }, body);
     tr.tabIndex = 0;
     const cell = (text: string, cls?: string) => h("td", { text, class: cls }, tr);
     cell(fmtTime(w.started_at) + (w.clock_valid ? "" : " *"));
@@ -400,7 +415,7 @@ function renderRecent(d: Summary) {
     cell(w.battery_mv === null ? "–" : `${w.battery_mv.toLocaleString()} mV`, "num");
     cell(w.awake_ms === null ? "–" : `${(w.awake_ms / 1000).toFixed(1)} s`, "num");
     cell(w.wifi_ms === null ? "–" : `${(w.wifi_ms / 1000).toFixed(1)} s`, "num");
-    cell(RESETS[w.reset_reason ?? ""]?.label ?? w.reset_reason ?? "–");
+    cell((RESETS[w.reset_reason ?? ""]?.label ?? w.reset_reason ?? "–") + (w.is_test ? " · test" : ""));
     const toggle = () => toggleEvents(tr, w);
     tr.addEventListener("click", toggle);
     tr.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle()));
@@ -442,6 +457,16 @@ function setRange(r: string) {
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>("#ranges button")) b.addEventListener("click", () => setRange(b.dataset.range!));
+const testsSwitch = $("show-tests");
+testsSwitch.setAttribute("aria-checked", String(showTests));
+testsSwitch.addEventListener("click", () => {
+  showTests = !showTests;
+  testsSwitch.setAttribute("aria-checked", String(showTests));
+  try {
+    localStorage.setItem("showTests", showTests ? "1" : "0");
+  } catch {}
+  load();
+});
 $("recent-more").addEventListener("click", () => {
   recentShown += 50;
   if (data) renderRecent(data);

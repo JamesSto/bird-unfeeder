@@ -80,6 +80,30 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 24px 48px; display: flex; f
 .ranges button:hover { background: var(--grid); }
 .ranges button[aria-pressed="true"] { background: var(--ink); color: var(--surface); font-weight: 600; }
 
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+/* Sized to sit beside .ranges: same surface, border, radius and height. */
+.switch {
+  display: flex; align-items: center; gap: 8px; font: inherit; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 8px 10px; cursor: pointer;
+}
+.switch:hover { background: var(--grid); }
+.switch:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.switch-track {
+  position: relative; width: 26px; height: 16px; border-radius: 8px; background: var(--axis); flex: none; transition: background 0.15s;
+}
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); transition: transform 0.15s;
+}
+.switch[aria-checked="true"] { color: var(--ink); }
+.switch[aria-checked="true"] .switch-track { background: var(--ink); }
+.switch[aria-checked="true"] .switch-thumb { transform: translateX(10px); }
+.switch-count {
+  font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-2); background: var(--grid); border-radius: 999px; padding: 0 7px; line-height: 18px;
+}
+.switch:hover .switch-count { background: var(--surface); }
+tr.is-test td { color: var(--ink-muted); }
+.chart .seg-testing { opacity: 0.45; }
+
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .status-dot.ok { background: var(--good); }
 .status-dot.bad { background: var(--critical); }

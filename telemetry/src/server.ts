@@ -9,6 +9,7 @@ import { buildSummary } from "./summary.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const store = new Store(process.env.DB_PATH ?? "data/telemetry.db");
+store.reclassify();
 const app = new Hono();
 
 // Same credentials the firmware sends in post() (arduino/bird_unfeeder/wifi_util.cpp), used for
@@ -32,6 +33,7 @@ app.on("POST", INGEST_PATHS, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
   try {
     const wake = parsePacket(body, Date.now());
     const id = store.insert(wake);
+    store.reclassify();
     console.log(`wake ${id}: ${wake.outcome}, weight ${wake.weightUp ? "up" : "down"}, ${wake.batteryMv ?? "?"} mV`);
     return c.json({ ok: true, id });
   } catch (e) {
@@ -46,7 +48,7 @@ app.get("/api/summary", (c) => {
   const to = Number(c.req.query("to") ?? now);
   const from = Number(c.req.query("from") ?? now - 86_400_000);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return c.json({ error: "bad from/to" }, 400);
-  return c.json(buildSummary(store, from, to, now));
+  return c.json(buildSummary(store, from, to, now, c.req.query("tests") === "1"));
 });
 
 app.get("/api/wakes/:id/events", (c) => {
@@ -54,6 +56,11 @@ app.get("/api/wakes/:id/events", (c) => {
   return events ? c.json(events) : c.json({ error: "not found" }, 404);
 });
 
+// Make browsers revalidate (cheap 304s) so a rebuild isn't masked by stale cached JS/CSS.
+app.use("/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-cache");
+});
 app.use("/*", serveStatic({ root: "./public" }));
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {

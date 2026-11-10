@@ -13,11 +13,19 @@
       <h1>Bird unfeeder</h1>
       <div id="last-seen" class="muted">Loading…</div>
     </div>
+    <div class="controls">
+    <button id="show-tests" class="switch" role="switch" aria-checked="false"
+      title="Wakes inferred to be bench testing: bursts of power-ons, and wakes closer together than the 15-minute polling period">
+      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+      Show test data
+      <span id="test-count" class="switch-count" hidden></span>
+    </button>
     <div id="ranges" class="ranges" role="group" aria-label="Time range">
       <button data-range="24h">24 h</button>
       <button data-range="7d">7 days</button>
       <button data-range="30d">30 days</button>
       <button data-range="90d">90 days</button>
+    </div>
     </div>
   </header>
 

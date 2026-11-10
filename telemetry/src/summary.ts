@@ -16,7 +16,8 @@ export interface Alert {
   detail: string;
 }
 
-export type SegmentState = "up" | "down" | "unknown" | "offline";
+// "testing": a gap in the real data that only inferred test wakes fill (see classify.ts).
+export type SegmentState = "up" | "down" | "unknown" | "offline" | "testing";
 export interface Segment {
   start: number;
   end: number;
@@ -62,11 +63,16 @@ function stateOf(up: number | null): SegmentState {
   return up === null ? "unknown" : up ? "up" : "down";
 }
 
-export function buildSummary(store: Store, from: number, to: number, now: number) {
+export function buildSummary(all: Store, from: number, to: number, now: number, includeTests = false) {
+  // Everything is computed from `store`, which leaves out inferred test wakes unless asked.
+  // Liveness uses `all`: a device being bench-tested is still online.
+  const store = all.scoped(includeTests);
   const latest = store.latest() ?? null;
+  const lastSeen = all.latestAny() ?? null;
   const end = Math.min(to, now);
   const bucketMs = pickBucket(end - from);
-  const online = latest !== null && now - latest.ended_at < config.offlineAfterMs;
+  const online = lastSeen !== null && now - lastSeen.ended_at < config.offlineAfterMs;
+  const gapState = (a: number, b: number): SegmentState => (!includeTests && all.countTests(a, b) > 0 ? "testing" : "offline");
 
   // Mode timeline + coverage. Start from the last wake before the window so the window
   // opens in whatever state the device was already in.
@@ -93,11 +99,16 @@ export function buildSummary(store: Store, from: number, to: number, now: number
       const gap = next.t - p.e;
       if (gap > config.offlineAfterMs) {
         push(p.t, p.e, stateOf(p.up));
-        push(p.e, next.t, "offline");
+        push(p.e, next.t, gapState(p.e, next.t));
       } else {
         push(p.t, next.t, stateOf(p.up));
         intervals.push(next.t - p.t);
       }
+    } else if (lastSeen && lastSeen.is_test && lastSeen.started_at > p.e && !includeTests) {
+      // Testing since the last real wake.
+      push(p.t, p.e, stateOf(p.up));
+      push(p.e, online ? end : lastSeen.ended_at, "testing");
+      if (!online) push(lastSeen.ended_at, end, "offline");
     } else {
       push(p.t, online ? end : p.e, stateOf(p.up));
       if (!online) push(p.e, end, "offline");
@@ -140,15 +151,16 @@ export function buildSummary(store: Store, from: number, to: number, now: number
   // Alerts, worst first.
   const alerts: Alert[] = [];
   const count = (t: Array<{ k: string; n: number }>, ...keys: string[]) => t.filter((r) => keys.includes(r.k)).reduce((s, r) => s + r.n, 0);
-  if (latest?.outcome === "raise_failed") {
+  // Uses lastSeen: even a test wake that stalls leaves the device asleep until reset.
+  if (lastSeen?.outcome === "raise_failed") {
     alerts.push({
       level: "critical",
       title: "Motor stalled: device is asleep until reset",
-      detail: `The weight didn't reach the limit switch within ${RAISE_TIMEOUT_MS / 1000} s at ${fmt(latest.started_at)}.`,
+      detail: `The weight didn't reach the limit switch within ${RAISE_TIMEOUT_MS / 1000} s at ${fmt(lastSeen.started_at)}.`,
     });
   }
-  if (latest && !online && latest.outcome !== "raise_failed") {
-    alerts.push({ level: "serious", title: "Device offline", detail: `Last check-in was ${ago(now - latest.ended_at)} ago (${fmt(latest.ended_at)}).` });
+  if (lastSeen && !online && lastSeen.outcome !== "raise_failed") {
+    alerts.push({ level: "serious", title: "Device offline", detail: `Last check-in was ${ago(now - lastSeen.ended_at)} ago (${fmt(lastSeen.ended_at)}).` });
   }
   if (battery && battery.mv < config.batteryLowMv) {
     alerts.push({
@@ -180,7 +192,10 @@ export function buildSummary(store: Store, from: number, to: number, now: number
     to: end,
     bucketMs,
     latest,
+    lastSeen,
     online,
+    includeTests,
+    testWakes: all.countTests(from, end),
     mode: latest?.weight_up == null ? "unknown" : latest.weight_up ? "up" : "down",
     raiseTimeoutMs: RAISE_TIMEOUT_MS,
     offlineAfterMs: config.offlineAfterMs,

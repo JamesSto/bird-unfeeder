@@ -141,6 +141,7 @@ if (mode === "backfill") {
       t += last.uptime_ms! + INTERVAL_MS + rand(0, 400);
     }
   });
+  store.reclassify();
   store.close();
   console.log(`inserted ${n} wakes over ${days} days`);
 } else {

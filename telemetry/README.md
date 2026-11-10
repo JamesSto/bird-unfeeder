@@ -30,3 +30,9 @@ npm run simulate -- live                              # one wake every 15 min to
   the time the server received the packet if NTP never synced.
 - **Offline** means no check-in for `OFFLINE_AFTER_MS` (1 hour, i.e. about four missed 15-minute wakes). Wakes where Wi-Fi fails never
   reach the server, so they show up as gaps.
+- **Test data** is inferred (`src/classify.ts`) and hidden unless "Show test data" is switched on.
+  A wake counts as testing if it's a timer wake less than 10 minutes after the previous wake
+  (faster than the 15-minute polling period), or a manual reset (power on, reset pin, etc.)
+  followed by a fast wake or another manual reset within the hour. Brownouts, crashes and
+  watchdog resets are never hidden. A lone power-on followed by normal wakes (a battery swap)
+  counts as real. Set `WAKE_INTERVAL_MS` if the polling period changes.

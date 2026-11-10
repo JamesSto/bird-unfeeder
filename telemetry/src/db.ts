@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Wake } from "./packet.ts";
+import { inferTests, type ClassifyRow } from "./classify.ts";
 
 export type WakeRow = {
   id: number;
@@ -23,10 +24,13 @@ export type WakeRow = {
   wifi_ms: number | null;
   ntp_ms: number | null;
   raise_ms: number | null;
+  is_test: number;
 };
 
 export class Store {
   private db: DatabaseSync;
+  // Table or view the read queries use; see scoped().
+  private src = "wakes";
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -57,6 +61,42 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS wakes_started_at ON wakes (started_at);
     `);
+    const cols = this.db.prepare(`PRAGMA table_info(wakes)`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "is_test")) this.db.exec(`ALTER TABLE wakes ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0`);
+    this.db.exec(`CREATE VIEW IF NOT EXISTS real_wakes AS SELECT * FROM wakes WHERE is_test = 0`);
+  }
+
+  // The same store, but with read queries limited to wakes not inferred to be testing.
+  scoped(includeTests: boolean): Store {
+    const s = Object.create(this) as Store;
+    s.src = includeTests ? "wakes" : "real_wakes";
+    return s;
+  }
+
+  // Re-runs the test-data heuristic over every wake. Whether a wake was a test depends on the
+  // wakes after it, so this runs after each insert. Returns how many flags changed.
+  reclassify(): number {
+    const rows = this.db
+      .prepare(`SELECT id, started_at AS t, reset_reason AS reset, is_test FROM wakes ORDER BY started_at`)
+      .all() as unknown as Array<ClassifyRow & { is_test: number }>;
+    const tests = inferTests(rows);
+    const changed = rows.filter((r) => (tests.has(r.id) ? 1 : 0) !== r.is_test);
+    if (changed.length) {
+      const upd = this.db.prepare(`UPDATE wakes SET is_test = ? WHERE id = ?`);
+      this.transaction(() => {
+        for (const r of changed) upd.run(r.is_test ? 0 : 1, r.id);
+      });
+    }
+    return changed.length;
+  }
+
+  countTests(from: number, to: number): number {
+    return (this.db.prepare(`SELECT COUNT(*) AS n FROM wakes WHERE is_test = 1 AND started_at >= ? AND started_at < ?`).get(from, to) as { n: number }).n;
+  }
+
+  // Latest wake of any kind, test or not: used to decide whether the device is alive.
+  latestAny(): WakeRow | undefined {
+    return this.db.prepare(`SELECT ${COLS} FROM wakes ORDER BY started_at DESC LIMIT 1`).get() as WakeRow | undefined;
   }
 
   insert(w: Wake): number {
@@ -103,28 +143,28 @@ export class Store {
   }
 
   latest(): WakeRow | undefined {
-    return this.db.prepare(`SELECT ${COLS} FROM wakes ORDER BY started_at DESC LIMIT 1`).get() as WakeRow | undefined;
+    return this.db.prepare(`SELECT ${COLS} FROM ${this.src} ORDER BY started_at DESC LIMIT 1`).get() as WakeRow | undefined;
   }
 
   // Most recent wake that reported a battery reading (every wake should, but be safe).
   latestWith(column: "battery_mv"): WakeRow | undefined {
     return this.db
-      .prepare(`SELECT ${COLS} FROM wakes WHERE ${column} IS NOT NULL ORDER BY started_at DESC LIMIT 1`)
+      .prepare(`SELECT ${COLS} FROM ${this.src} WHERE ${column} IS NOT NULL ORDER BY started_at DESC LIMIT 1`)
       .get() as WakeRow | undefined;
   }
 
   lastWithWeight(up: 0 | 1): WakeRow | undefined {
-    return this.db.prepare(`SELECT ${COLS} FROM wakes WHERE weight_up = ? ORDER BY started_at DESC LIMIT 1`).get(up) as WakeRow | undefined;
+    return this.db.prepare(`SELECT ${COLS} FROM ${this.src} WHERE weight_up = ? ORDER BY started_at DESC LIMIT 1`).get(up) as WakeRow | undefined;
   }
 
   firstAfter(t: number): WakeRow | undefined {
-    return this.db.prepare(`SELECT ${COLS} FROM wakes WHERE started_at > ? ORDER BY started_at LIMIT 1`).get(t) as WakeRow | undefined;
+    return this.db.prepare(`SELECT ${COLS} FROM ${this.src} WHERE started_at > ? ORDER BY started_at LIMIT 1`).get(t) as WakeRow | undefined;
   }
 
   // Lightweight per-wake rows for building the mode timeline and coverage.
   points(from: number, to: number): Array<{ t: number; e: number; up: number | null }> {
     return this.db
-      .prepare(`SELECT started_at AS t, ended_at AS e, weight_up AS up FROM wakes WHERE started_at >= ? AND started_at < ? ORDER BY started_at`)
+      .prepare(`SELECT started_at AS t, ended_at AS e, weight_up AS up FROM ${this.src} WHERE started_at >= ? AND started_at < ? ORDER BY started_at`)
       .all(from, to) as Array<{ t: number; e: number; up: number | null }>;
   }
 
@@ -141,7 +181,7 @@ export class Store {
                 AVG(wifi_ms)                 AS wifi_avg,
                 AVG(ntp_ms)                  AS ntp_avg,
                 AVG(NULLIF(wifi_rssi, 0))    AS rssi_avg
-         FROM wakes WHERE started_at >= :from AND started_at < :to
+         FROM ${this.src} WHERE started_at >= :from AND started_at < :to
          GROUP BY 1 ORDER BY 1`,
       )
       .all({ size, from, to }) as Array<{
@@ -161,21 +201,21 @@ export class Store {
     return this.db
       .prepare(
         `SELECT (started_at / CAST(:size AS INTEGER)) * CAST(:size AS INTEGER) AS t, COUNT(*) AS n
-         FROM wakes WHERE started_at >= :from AND started_at < :to GROUP BY 1 ORDER BY 1`,
+         FROM ${this.src} WHERE started_at >= :from AND started_at < :to GROUP BY 1 ORDER BY 1`,
       )
       .all({ size, from, to }) as Array<{ t: number; n: number }>;
   }
 
   batterySince(from: number): Array<{ t: number; v: number }> {
     return this.db
-      .prepare(`SELECT started_at AS t, battery_mv AS v FROM wakes WHERE started_at >= ? AND battery_mv IS NOT NULL ORDER BY started_at`)
+      .prepare(`SELECT started_at AS t, battery_mv AS v FROM ${this.src} WHERE started_at >= ? AND battery_mv IS NOT NULL ORDER BY started_at`)
       .all(from) as Array<{ t: number; v: number }>;
   }
 
   motorRuns(from: number, to: number) {
     return this.db
       .prepare(
-        `SELECT id, started_at AS t, outcome, raise_ms FROM wakes
+        `SELECT id, started_at AS t, outcome, raise_ms FROM ${this.src}
          WHERE started_at >= ? AND started_at < ? AND outcome IN ('raised', 'lowered', 'raise_failed')
          ORDER BY started_at`,
       )
@@ -184,13 +224,13 @@ export class Store {
 
   tally(column: "outcome" | "reset_reason", from: number, to: number) {
     return this.db
-      .prepare(`SELECT COALESCE(${column}, 'unknown') AS k, COUNT(*) AS n FROM wakes WHERE started_at >= ? AND started_at < ? GROUP BY 1 ORDER BY n DESC`)
+      .prepare(`SELECT COALESCE(${column}, 'unknown') AS k, COUNT(*) AS n FROM ${this.src} WHERE started_at >= ? AND started_at < ? GROUP BY 1 ORDER BY n DESC`)
       .all(from, to) as Array<{ k: string; n: number }>;
   }
 
   recent(from: number, to: number, limit: number): WakeRow[] {
     return this.db
-      .prepare(`SELECT ${COLS} FROM wakes WHERE started_at >= ? AND started_at < ? ORDER BY started_at DESC LIMIT ?`)
+      .prepare(`SELECT ${COLS} FROM ${this.src} WHERE started_at >= ? AND started_at < ? ORDER BY started_at DESC LIMIT ?`)
       .all(from, to, limit) as WakeRow[];
   }
 
@@ -205,4 +245,4 @@ export class Store {
 }
 
 const COLS = `id, received_at, started_at, ended_at, clock_valid, awake_ms, outcome, weight_up, battery_mv,
-  battery_adc_mv, reset_reason, wakeup_cause, wifi_rssi, free_heap, min_free_heap, build, wifi_ms, ntp_ms, raise_ms`;
+  battery_adc_mv, reset_reason, wakeup_cause, wifi_rssi, free_heap, min_free_heap, build, wifi_ms, ntp_ms, raise_ms, is_test`;
