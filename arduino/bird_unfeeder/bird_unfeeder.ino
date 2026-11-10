@@ -14,7 +14,7 @@
 #include "clock_state.h"
 #include "secrets.h"
 
-constexpr int POLLING_PERIOD_US = 1 * 60 * 1000 * 1000;
+constexpr int POLLING_PERIOD_US = 15 * 60 * 1000 * 1000;
 
 bool run_setup() {
   Serial.begin(115200);

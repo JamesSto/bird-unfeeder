@@ -1,12 +1,13 @@
 #pragma once
 
 #include <Arduino.h>
+#include <string>
 #include "motor.h"
 #include "limit_switch.h"
 #include "telemetry.h"
 
-constexpr int LOWER_WEIGHT_DURATION_MS = 5 * 1000;
-constexpr int RAISE_WEIGHT_LIMIT_MS = 8 * 1000;
+constexpr int LOWER_WEIGHT_DURATION_MS = 9 * 1000;
+constexpr int RAISE_WEIGHT_LIMIT_MS = 14 * 1000;
 
 bool raise_weight() {
   if (limit_switch_pressed()) {
@@ -26,7 +27,7 @@ bool raise_weight() {
     addTelemetryEvent(TelemetryEvent::RAISE_WEIGHT_FAILURE);
     return false;
   }
-  addTelemetryEvent(TelemetryEvent::FINISHED_RAISE_WEIGHT);
+  addTelemetryEvent(TelemetryEvent::FINISHED_RAISE_WEIGHT, String(end_time - start_time));
   return true;
 }
 
