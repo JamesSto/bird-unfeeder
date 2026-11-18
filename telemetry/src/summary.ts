@@ -1,5 +1,6 @@
 import type { Store, WakeRow } from "./db.ts";
 import { RAISE_TIMEOUT_MS } from "./packet.ts";
+import { MAX_FIT_MS, batteryPct, batteryTrend } from "./battery.ts";
 
 export const config = {
   // This long without a check-in counts as offline. Kept well above the wake interval so the
@@ -28,35 +29,6 @@ const BUCKETS = [60_000, 5 * 60_000, 10 * 60_000, 15 * 60_000, 30 * 60_000, 3_60
 
 export function pickBucket(spanMs: number, target = 240): number {
   return BUCKETS.find((b) => spanMs / b <= target) ?? BUCKETS[BUCKETS.length - 1];
-}
-
-// Rough single-cell LiPo resting-voltage curve (mV -> %).
-const LIPO: Array<[number, number]> = [
-  [4200, 100], [4100, 90], [4000, 80], [3900, 65], [3800, 50], [3700, 30], [3600, 15], [3500, 7], [3400, 3], [3300, 0],
-];
-
-export function batteryPct(mv: number): number {
-  if (mv >= LIPO[0][0]) return 100;
-  for (let i = 1; i < LIPO.length; i++) {
-    const [v1, p1] = LIPO[i - 1];
-    const [v0, p0] = LIPO[i];
-    if (mv >= v0) return p0 + ((mv - v0) / (v1 - v0)) * (p1 - p0);
-  }
-  return 0;
-}
-
-// Least-squares slope in mV/day.
-function slopePerDay(pts: Array<{ t: number; v: number }>): number | null {
-  if (pts.length < 10 || pts[pts.length - 1].t - pts[0].t < 12 * 3_600_000) return null;
-  const n = pts.length;
-  const t0 = pts[0].t;
-  let sx = 0, sy = 0, sxx = 0, sxy = 0;
-  for (const p of pts) {
-    const x = (p.t - t0) / 86_400_000;
-    sx += x; sy += p.v; sxx += x * x; sxy += x * p.v;
-  }
-  const d = n * sxx - sx * sx;
-  return d === 0 ? null : (n * sxy - sx * sy) / d;
 }
 
 function stateOf(up: number | null): SegmentState {
@@ -127,18 +99,17 @@ export function buildSummary(all: Store, from: number, to: number, now: number, 
     modeSince = store.firstAfter(other?.started_at ?? 0)?.started_at ?? null;
   }
 
-  // Battery
+  // Battery. The trend always uses real wakes only, so the test-data toggle doesn't move it.
   const batt = store.latestWith("battery_mv");
-  const trendPts = store.batterySince(now - 3 * 86_400_000);
-  const slope = slopePerDay(trendPts);
+  const trend = batt ? batteryTrend(all.scoped(false).batterySince(now - MAX_FIT_MS - 7 * 86_400_000), now, config.batteryEmptyMv) : null;
   const battery = batt
     ? {
         mv: batt.battery_mv!,
         adcMv: batt.battery_adc_mv,
         at: batt.started_at,
         pct: Math.round(batteryPct(batt.battery_mv!)),
-        slopeMvPerDay: slope,
-        daysLeft: slope !== null && slope < 0 ? Math.max(0, (batt.battery_mv! - config.batteryEmptyMv) / -slope) : null,
+        trend: trend && "pctNow" in trend ? trend : null,
+        trendReadyAt: trend && "waitUntil" in trend ? trend.waitUntil : null,
         emptyMv: config.batteryEmptyMv,
         lowMv: config.batteryLowMv,
       }
@@ -166,7 +137,7 @@ export function buildSummary(all: Store, from: number, to: number, now: number, 
     alerts.push({
       level: battery.mv < config.batteryEmptyMv + 100 ? "critical" : "warning",
       title: "Battery low",
-      detail: `${battery.mv} mV (about ${battery.pct}%).` + (battery.daysLeft !== null ? ` Roughly ${battery.daysLeft.toFixed(1)} days to ${config.batteryEmptyMv} mV at the current rate.` : ""),
+      detail: `${battery.mv} mV (about ${battery.pct}%).` + (battery.trend?.daysLeft != null ? ` Roughly ${battery.trend.daysLeft.toFixed(1)} days until empty at the current rate.` : ""),
     });
   }
   const badResets = count(day.resets, "brownout", "crash", "watchdog");

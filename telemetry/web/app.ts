@@ -39,7 +39,17 @@ interface Summary {
   offlineAfterMs: number;
   modeSince: number | null;
   alerts: Array<{ level: "critical" | "serious" | "warning"; title: string; detail: string }>;
-  battery: { mv: number; adcMv: number | null; at: number; pct: number; slopeMvPerDay: number | null; daysLeft: number | null; emptyMv: number; lowMv: number } | null;
+  battery: {
+    mv: number;
+    adcMv: number | null;
+    at: number;
+    pct: number;
+    // See src/battery.ts.
+    trend: { pctNow: number; pctPerDay: number; mvPerDay: number; dailySwingMv: number; daysLeft: number | null; emptyAt: number | null; fitFrom: number; fitDays: number } | null;
+    trendReadyAt: number | null;
+    emptyMv: number;
+    lowMv: number;
+  } | null;
   buckets: Array<{ t: number; n: number; battery_avg: number | null; battery_min: number | null; battery_max: number | null; awake_avg: number | null; wifi_avg: number | null; ntp_avg: number | null; rssi_avg: number | null }>;
   checkinsPerHour: Array<{ t: number; n: number }>;
   segments: Array<{ start: number; end: number; state: State }>;
@@ -176,11 +186,7 @@ function renderTiles(d: Summary) {
   });
   hero.classList.add("tile-hero");
 
-  const b = d.battery;
-  tile(el, "Battery", b ? `${b.mv.toLocaleString()} mV` : "–", b ? [
-    `≈${b.pct}% (LiPo curve, ADC ${b.adcMv ?? "?"} mV × 2)`,
-    b.slopeMvPerDay === null ? "Trend: needs 12 h of data" : `${b.slopeMvPerDay >= 0 ? "+" : "−"}${Math.abs(b.slopeMvPerDay).toFixed(0)} mV/day over 3 days` + (b.daysLeft !== null ? ` · ~${b.daysLeft.toFixed(0)} days to ${b.emptyMv} mV` : ""),
-  ] : ["No readings"]);
+  renderBatteryTile(el, d);
 
   const c = d.coverage;
   tile(el, `Uptime, ${span}`, c.pct === null ? "–" : `${(c.pct * 100).toFixed(c.pct > 0.999 ? 2 : 1)}%`, [
@@ -203,6 +209,40 @@ function renderTiles(d: Summary) {
     `Last ${awake.length} wakes`,
     d.latest?.build ? `Firmware built ${d.latest.build}` : "",
   ]);
+}
+
+function renderBatteryTile(el: HTMLElement, d: Summary) {
+  const b = d.battery;
+  if (!b) return void tile(el, "Battery life", "–", ["No readings"]);
+  const tr = b.trend;
+  const now = `${Math.round(tr?.pctNow ?? b.pct)}% now · ${b.mv.toLocaleString()} mV`;
+  let value = "–";
+  let subs: string[];
+  if (tr && tr.daysLeft !== null) {
+    value = `~${fmtDaysLeft(tr.daysLeft)}`;
+    subs = [
+      `Empty around ${new Date(tr.emptyAt!).toLocaleDateString(undefined, { month: "short", day: "numeric", year: tr.daysLeft > 300 ? "numeric" : undefined })}`,
+      now,
+      `${tr.pctPerDay.toFixed(2)}%/day (${tr.mvPerDay.toFixed(1)} mV/day) over ${tr.fitDays.toFixed(0)} days`,
+    ];
+  } else if (tr) {
+    value = "Not draining";
+    subs = [now, `${tr.mvPerDay >= 0 ? "+" : ""}${tr.mvPerDay.toFixed(1)} mV/day over ${tr.fitDays.toFixed(0)} days`];
+  } else {
+    subs = [now, b.trendReadyAt ? `Estimate from ${fmtTime(b.trendReadyAt)}: needs 3 days of readings since the last swap` : "Not enough readings for an estimate"];
+  }
+  const t = tile(el, "Battery life", value, subs);
+  t.classList.add("tile-hero");
+  t.title = "Trend fitted to estimated charge % with the daily temperature cycle removed"
+    + (tr ? ` (±${tr.dailySwingMv.toFixed(0)} mV daily swing)` : "")
+    + `. Voltage is ADC ${b.adcMv ?? "?"} mV × 2; % uses a rough LiPo curve, empty = ${b.emptyMv} mV.`;
+}
+
+// Whole days when it's close, nearest 5 beyond that: the estimate isn't better than a few days.
+function fmtDaysLeft(days: number) {
+  if (days < 1) return "<1 day";
+  const n = days < 20 ? Math.round(days) : Math.round(days / 5) * 5;
+  return `${n} day${n === 1 ? "" : "s"}`;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
